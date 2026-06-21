@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import { loadRpcAdapter } from '../modules/common/loadRpcAdapter';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -134,6 +135,23 @@ export class ApiMachineClient {
         });
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+
+        // Generic extension point: downstream integrations (e.g. 1Agents) register
+        // their own machine-scoped RPC handlers from an external module so this CLI
+        // stays free of downstream-specific code. See loadRpcAdapter / HAPPY_RPC_ADAPTER_ENTRY.
+        const adapterEntry = process.env.HAPPY_RPC_ADAPTER_ENTRY;
+        if (adapterEntry) {
+            void loadRpcAdapter(adapterEntry, {
+                registerHandler: (method, handler) => this.rpcHandlerManager.registerHandler(method, handler),
+                serverUrl: configuration.serverUrl,
+                token: this.token,
+                encrypt: (body) =>
+                    encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, body)),
+                decrypt: (b64) =>
+                    decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(b64)),
+                log: (msg, ...args) => logger.debug(msg, ...args),
+            });
+        }
     }
 
     setRPCHandlers({
