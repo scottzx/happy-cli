@@ -55,7 +55,9 @@ jobs:
 
       - name: Split latest upstream packages/happy-cli
         run: |
-          git clone --filter=blob:none https://github.com/slopus/happy.git /tmp/mono
+          # Full clone (no blob filter): subtree split + the local fetch below need
+          # all blobs present, else "could not fetch from promisor remote".
+          git clone https://github.com/slopus/happy.git /tmp/mono
           ( cd /tmp/mono && git subtree split -P packages/happy-cli -b cli-split )
           git fetch /tmp/mono cli-split:refs/heads/upstream-new
           echo "UPSHA=$(git -C /tmp/mono rev-parse HEAD)" >> "$GITHUB_ENV"
