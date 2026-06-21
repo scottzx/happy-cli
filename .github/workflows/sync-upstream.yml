@@ -1,0 +1,106 @@
+name: Sync upstream (slopus/happy → happy-cli)
+
+# Pull slopus/happy's packages/happy-cli into this fork and open a PR.
+#
+# Branch model:
+#   upstream : pristine snapshot of upstream packages/happy-cli (force-updated each run)
+#   main     : upstream + 1Agents patches (npm-alias wire + loadRpcAdapter loader)
+#
+# Each run: split the latest upstream happy-cli, then re-apply our patches — defined
+# history-independently as the tree diff `upstream..main` — onto the fresh upstream,
+# and open a PR into main. It NEVER auto-merges, and on a patch conflict it FAILS the
+# run (so patches are never silently dropped) for manual reconciliation.
+#
+# 1Agents-specific glue lives in 1agents_app/modules/happy-adapter, NOT here — so this
+# fork stays a clean blueprint and these syncs should normally apply with no conflicts.
+#
+# Note: the branches were initially seeded from a SHALLOW upstream snapshot, so the
+# first run replaces `upstream` with a full-clone split (new SHA, same tree) — expected.
+
+on:
+  schedule:
+    - cron: '0 18 * * 1' # weekly, Monday 18:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (main, full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin upstream:refs/remotes/origin/upstream
+
+      - name: Capture 1Agents patches (tree diff upstream..main)
+        run: |
+          # Tree-based, history-independent: main tree − upstream tree == our patches,
+          # regardless of how histories were seeded/merged.
+          git diff origin/upstream main > /tmp/1agents-patches.diff
+          echo "patch bytes: $(wc -c < /tmp/1agents-patches.diff)"
+
+      - name: Split latest upstream packages/happy-cli
+        run: |
+          git clone --filter=blob:none https://github.com/slopus/happy.git /tmp/mono
+          ( cd /tmp/mono && git subtree split -P packages/happy-cli -b cli-split )
+          git fetch /tmp/mono cli-split:refs/heads/upstream-new
+          echo "UPSHA=$(git -C /tmp/mono rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Skip if upstream unchanged
+        id: check
+        run: |
+          if git diff --quiet origin/upstream upstream-new; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream happy-cli unchanged — nothing to sync."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Replay patches onto fresh upstream
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # Build the new tree in a worktree: fresh upstream + our patches (3-way).
+          git worktree add /tmp/wt upstream-new
+          if [ -s /tmp/1agents-patches.diff ]; then
+            if ! git -C /tmp/wt apply --3way /tmp/1agents-patches.diff; then
+              echo "::error::1Agents patches did not apply cleanly onto new upstream — resolve manually (likely package.json wire line or apiMachine loader block)."
+              exit 1
+            fi
+          fi
+          git -C /tmp/wt add -A
+          TREE=$(git -C /tmp/wt write-tree)
+          # Commit the new tree as a child of main → PR is a clean fast-forward.
+          NEW=$(git commit-tree "$TREE" -p main -m "Sync upstream slopus/happy happy-cli (${UPSHA:0:8}) + 1Agents patches")
+          git branch -f sync/upstream "$NEW"
+
+      - name: Update pristine upstream branch
+        if: steps.check.outputs.changed == 'true'
+        run: git push origin upstream-new:refs/heads/upstream --force
+
+      - name: Push sync branch and open/update PR
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin sync/upstream --force
+          if [ -z "$(gh pr list --head sync/upstream --base main --state open --json number --jq '.[0].number')" ]; then
+            gh pr create --base main --head sync/upstream --repo "$GITHUB_REPOSITORY" \
+              --title "Sync upstream slopus/happy (happy-cli) ${UPSHA:0:8}" \
+              --body "Automated weekly sync. Fresh upstream \`packages/happy-cli\` (\`${UPSHA}\`) with 1Agents patches replayed (npm-alias wire + \`loadRpcAdapter\` loader). Review the diff and merge. 1Agents glue stays in \`1agents_app/modules/happy-adapter\`."
+          else
+            echo "Existing PR updated by the force-push above."
+          fi
