@@ -56,3 +56,24 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
 ]);
 
 export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>
+
+/**
+ * Structural stand-ins for Anthropic user message content blocks.
+ * 1agents ships happy-cli as a wire/relay only and deliberately avoids depending
+ * on @anthropic-ai/sdk just to type multimodal user content.
+ */
+export type ClaudeImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
+export type ClaudeContentBlockParam =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image'
+      source: {
+        type: 'base64'
+        media_type: ClaudeImageMediaType
+        data: string
+      }
+    }
+
+export type ClaudeMessageContent = string | ClaudeContentBlockParam[]
+

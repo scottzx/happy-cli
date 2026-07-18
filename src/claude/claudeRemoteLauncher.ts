@@ -11,12 +11,11 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { EnhancedMode } from "./loop";
-import { RawJSONLines } from "@/claude/types";
+import { RawJSONLines, type ClaudeContentBlockParam, type ClaudeMessageContent } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 
 interface PermissionsField {
     date: number;
@@ -276,7 +275,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: MessageParam['content'];
+            message: ClaudeMessageContent;
             mode: EnhancedMode;
         } | null = null;
 
@@ -346,7 +345,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             // to wait out here — just consume what travelled with the batch.
                             const attachments = msg.attachments ?? [];
                             if (attachments.length > 0) {
-                                const contentBlocks: ContentBlockParam[] = [];
+                                const contentBlocks: ClaudeContentBlockParam[] = [];
                                 for (const att of attachments) {
                                     // Detect media type from the decrypted bytes' magic header
                                     // rather than trusting the wire-supplied mimeType. iOS image

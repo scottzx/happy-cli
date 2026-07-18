@@ -1,6 +1,6 @@
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
-import type { MessageParam } from '@anthropic-ai/sdk/resources'
+import type { ClaudeMessageContent } from "./types";
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
@@ -32,7 +32,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: ClaudeMessageContent, mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -93,7 +93,7 @@ export async function claudeRemote(opts: {
     // Handle special commands (extract text for parsing when content is a block array)
     const initialText = typeof initial.message === 'string'
         ? initial.message
-        : (initial.message.find((b) => b.type === 'text') as { type: 'text'; text: string } | undefined)?.text ?? '';
+        : (initial.message.find((b): b is { type: 'text'; text: string } => b.type === 'text')?.text ?? '');
     const specialCommand = parseSpecialCommand(initialText);
 
     // Handle /clear command
