@@ -4,9 +4,10 @@ import type { RawJSONLines } from '@/claude/types';
 import {
     createEnvelope,
     type SessionEnvelope,
-    type SessionUsage,
     type SessionTurnEndStatus,
 } from '@slopus/happy-wire';
+
+export type SessionUsage = Record<string, unknown>;
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
@@ -435,7 +436,7 @@ function attachUsageToLastEnvelope(
             envelopes[i] = {
                 ...envelopes[i],
                 usage,
-            };
+            } as any;
             return;
         }
     }

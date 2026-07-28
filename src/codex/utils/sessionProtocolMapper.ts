@@ -2,7 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
-import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope, type SessionUsage } from '@slopus/happy-wire';
+import { createEnvelope, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
+
+export type SessionUsage = Record<string, unknown>;
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
 
 export type CodexTurnState = {
@@ -992,7 +994,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
                 // token_count event. Turn-less agent envelopes are dropped by
                 // those versions, while versions with the filter read the
                 // usage either way.
-                ? [createEnvelope('agent', { t: 'service', text: '' }, { usage })]
+                ? [createEnvelope('agent', { t: 'service', text: '' }, { usage } as any)]
                 : [],
         };
     }
